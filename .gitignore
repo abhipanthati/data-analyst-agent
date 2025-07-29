@@ -1,0 +1,55 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# VS Code config
+.vscode/
+
+# macOS system files
+.DS_Store
+
+# Python distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Plot image cache (if saved)
+*.png
+*.jpg
+*.jpeg
+*.svg
+
+# Logs and local env
+*.log
+.env
+.env.*
+
+# pyright, mypy, pytest, coverage etc.
+.mypy_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Test outputs
+test_output/
