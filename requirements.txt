@@ -12,6 +12,7 @@ fonttools==4.59.0
 h11==0.16.0
 idna==3.10
 kiwisolver==1.4.8
+lxml==6.0.0
 matplotlib==3.10.3
 numpy==2.3.2
 packaging==25.0
@@ -21,6 +22,7 @@ pydantic==2.11.7
 pydantic_core==2.33.2
 pyparsing==3.2.3
 python-dateutil==2.9.0.post0
+python-multipart==0.0.20
 pytz==2025.2
 requests==2.32.4
 scipy==1.16.1
