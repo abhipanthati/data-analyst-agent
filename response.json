@@ -1,1 +1,1 @@
-{"error":"LLM did not return valid JSON","raw":"```json\n{\n    \"January\": 340,\n    \"February\": 360,\n    \"March\": 412\n}\n```"}
+{"January":340,"February":360,"March":412}
