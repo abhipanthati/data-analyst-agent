@@ -169,7 +169,8 @@ And given the raw stdout/stderr from executing analysis code:
 {execution_output}
 
 If the stdout already contains valid JSON as requested by the question, return that JSON verbatim.
-Otherwise, synthesize the answers into the exact JSON format the question requested (either a JSON array or JSON object). Output **only** the JSON.
+Otherwise, synthesize the answers into the exact JSON format the question requested (either a JSON array or JSON object). Output only the JSON, without any Markdown code fences, backticks, or extra commentary.
+
 """
         try:
             final_answer = call_llm(format_prompt)
@@ -178,13 +179,22 @@ Otherwise, synthesize the answers into the exact JSON format the question reques
             final_results.append({"error": f"LLM formatting failed: {e}", "raw": execution_output})
             continue
 
+        import re
+
+        # Clean possible Markdown fences from LLM output
+        final_answer_clean = re.sub(
+            r"^```(?:json)?\s*|\s*```$",
+            "",
+            final_answer.strip(),
+            flags=re.MULTILINE
+        )
+
         # Parse LLM's JSON
         try:
-            parsed = json.loads(final_answer)
+            parsed = json.loads(final_answer_clean)
         except Exception:
             # If LLM output isn't JSON, try to find JSON in execution_output first
             try:
-                # naive attempt to extract JSON substring from execution_output
                 start = execution_output.find("{")
                 end = execution_output.rfind("}")
                 if start != -1 and end != -1 and end > start:
