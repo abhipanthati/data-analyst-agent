@@ -15,6 +15,7 @@ kiwisolver==1.4.8
 lxml==6.0.0
 matplotlib==3.10.3
 numpy==2.3.2
+openai
 packaging==25.0
 pandas==2.3.1
 pillow==11.3.0
@@ -35,4 +36,4 @@ typing-inspection==0.4.1
 typing_extensions==4.14.1
 tzdata==2025.2
 urllib3==2.5.0
-uvicorn==0.35.0
+uvicorn[standard]==0.35.0

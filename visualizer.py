@@ -1,14 +1,18 @@
+# visualizer.py
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import base64
 import io
 import traceback
+from PIL import Image
+
+MAX_FILE_SIZE = 100_000  # 100 KB
 
 def plot_regression(df, x_col, y_col, title=""):
     """
-    Generate a scatter plot with regression line for x_col vs y_col.
-    Returns a base64-encoded PNG image URI. Handles missing columns and empty data.
+    Create scatterplot with dotted red regression line and compress PNG to < 100 KB.
+    Returns: data:image/png;base64,<...>
     """
     try:
         df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
@@ -23,12 +27,8 @@ def plot_regression(df, x_col, y_col, title=""):
 
         plt.figure(figsize=(8, 6))
         sns.scatterplot(data=df, x=x_col, y=y_col)
-        sns.regplot(
-            data=df, x=x_col, y=y_col,
-            scatter=False,
-            color="red",
-            line_kws={'linestyle': 'dotted'}
-        )
+        sns.regplot(data=df, x=x_col, y=y_col, scatter=False,
+                    color="red", line_kws={'linestyle': 'dotted'})
 
         plt.xlabel(x_col.replace("_", " ").title())
         plt.ylabel(y_col.replace("_", " ").title())
@@ -38,9 +38,28 @@ def plot_regression(df, x_col, y_col, title=""):
         plt.savefig(buf, format="png", bbox_inches="tight")
         plt.close()
         buf.seek(0)
-        encoded = base64.b64encode(buf.read()).decode("utf-8")
+
+        image = Image.open(buf).convert("RGBA")
+
+        # Try optimization loop (PNG compression / resize fallback)
+        compressed = io.BytesIO()
+        image.save(compressed, format="PNG", optimize=True)
+        size = compressed.tell()
+
+        # If still too large, progressively reduce dimensions
+        width, height = image.size
+        while size > MAX_FILE_SIZE and (width > 200 and height > 200):
+            width = int(width * 0.9)
+            height = int(height * 0.9)
+            resized = image.resize((width, height), Image.LANCZOS)
+            compressed = io.BytesIO()
+            resized.save(compressed, format="PNG", optimize=True)
+            size = compressed.tell()
+            image = resized
+
+        compressed.seek(0)
+        encoded = base64.b64encode(compressed.read()).decode("ascii")
         return f"data:image/png;base64,{encoded}"
     except Exception as e:
-        print(f"Error in plot_regression: {e}")
         traceback.print_exc()
-        return "Error in plot generation"
+        return f"Error in plot_regression: {e}"
