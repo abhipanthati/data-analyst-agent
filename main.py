@@ -13,7 +13,8 @@ import openai
 
 from scraper import scrape_wikipedia_highest_grossing_films
 from analysis import answer_wikipedia_questions
-from visualizer import plot_regression
+from visualizer import plot_regression  # returns base64 data-uri
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -106,7 +107,7 @@ async def analyze(file: UploadFile = File(...)):
     # Shortcut for the known Wikipedia evaluation (keeps grading deterministic + fast)
     if "highest grossing films" in question_text.lower():
         try:
-            df = scrape_wikipedia_highest_grossing_films()
+            df = scrape_wikipedia_highest_grossing_films(use_cache=False)
             result = answer_wikipedia_questions(df, plot_function=plot_regression)
             # Must return a JSON array for this sample task
             return JSONResponse(content=result)
