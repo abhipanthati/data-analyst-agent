@@ -37,101 +37,53 @@ def _render_png_bytes(fig, dpi: int = 80) -> bytes:
     return buf.getvalue()
 
 
-def plot_regression(
-    df: pd.DataFrame,
-    x_col: str,
-    y_col: str,
-    title: str = "Regression",
-    max_bytes: int = 100_000,
-    try_reductions: bool = True,
-) -> str:
+import io
+import base64
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+
+def plot_regression(df: pd.DataFrame, x_col: str, y_col: str, title: str = "") -> str:
     """
-    Create a scatter + dotted red regression line and return a PNG data URI.
-
-    - Ensures axes labelled.
-    - If resulting PNG > max_bytes, tries smaller figure/dpi and palette quantize.
-    - Returns "data:image/png;base64,...."
+    Plot a scatterplot with a dotted red regression line and return as base64 PNG.
     """
-    if df is None or x_col not in df.columns or y_col not in df.columns:
-        raise ValueError("Required columns missing for plotting")
+    # Validate columns
+    if x_col not in df.columns or y_col not in df.columns:
+        raise ValueError(f"Missing required columns: {x_col}, {y_col}")
 
-    # Keep only numeric values for plotting
-    tmp = df[[x_col, y_col]].dropna()
-    try:
-        tmp[x_col] = pd.to_numeric(tmp[x_col], errors="coerce")
-        tmp[y_col] = pd.to_numeric(tmp[y_col], errors="coerce")
-    except Exception:
-        pass
-    tmp = tmp.dropna()
-    if tmp.empty:
-        raise ValueError("No numeric data available for plotting")
+    # Ensure numeric
+    df = df.copy()
+    df[x_col] = pd.to_numeric(df[x_col], errors="coerce")
+    df[y_col] = pd.to_numeric(df[y_col], errors="coerce")
+    df = df.dropna(subset=[x_col, y_col])
+    if df.empty:
+        raise ValueError("No valid numeric data to plot.")
 
-    # Try a sequence of render options to stay under size limit
-    fig_sizes = [(6, 4), (5, 3.2), (4.5, 3), (4, 2.8)]
-    dpis = [80, 72, 60]
+    # Create plot
+    plt.figure(figsize=(6, 4))
+    sns.scatterplot(x=x_col, y=y_col, data=df)
+    sns.regplot(
+        x=x_col, y=y_col, data=df,
+        scatter=False,
+        line_kws={"color": "red", "linestyle": ":"}  # dotted red line
+    )
+    plt.xlabel(x_col)
+    plt.ylabel(y_col)
+    plt.title(title or f"{y_col} vs {x_col}")
 
-    last_png = None
-    for figsize in fig_sizes:
-        for dpi in dpis:
-            fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-            sns.regplot(
-                x=x_col,
-                y=y_col,
-                data=tmp,
-                scatter_kws={"alpha": 0.6, "s": 20},
-                line_kws={"color": "red", "linestyle": "--", "linewidth": 1.2},
-                ax=ax,
-            )
-            ax.set_xlabel(str(x_col).capitalize())
-            ax.set_ylabel(str(y_col).capitalize())
-            ax.set_title(title)
-            # Draw grid lightly
-            ax.grid(True, linewidth=0.5, alpha=0.4)
+    # Save to buffer
+    buf = io.BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format="png", dpi=100, bbox_inches="tight")
+    plt.close()
 
-            png_bytes = _render_png_bytes(fig, dpi=dpi)
-            plt.close(fig)
+    # Convert to base64
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode("utf-8")
+    data_uri = f"data:image/png;base64,{img_base64}"
 
-            # quick size check
-            if len(png_bytes) <= max_bytes:
-                return _encode_png_bytes_to_data_uri(png_bytes)
+    # Ensure < 100 KB
+    if len(base64.b64decode(img_base64)) >= 100_000:
+        raise ValueError("Generated image exceeds 100 KB limit.")
 
-            last_png = png_bytes
-
-    # If still too large and try_reductions, try palette quantize
-    if try_reductions and last_png:
-        small = _try_palette_quantize(last_png)
-        if len(small) <= max_bytes:
-            return _encode_png_bytes_to_data_uri(small)
-
-    # Final fallback: if still too large, return a compact plot by re-rendering smaller
-    # We'll render a minimal tiny figure (very small)
-    try:
-        fig, ax = plt.subplots(figsize=(3.5, 2.5), dpi=60)
-        sns.regplot(
-            x=x_col,
-            y=y_col,
-            data=tmp,
-            scatter_kws={"alpha": 0.5, "s": 10},
-            line_kws={"color": "red", "linestyle": "--", "linewidth": 1.0},
-            ax=ax,
-        )
-        ax.set_xlabel(str(x_col).capitalize(), fontsize=8)
-        ax.set_ylabel(str(y_col).capitalize(), fontsize=8)
-        ax.set_title(title, fontsize=9)
-        png_bytes = _render_png_bytes(fig, dpi=60)
-        plt.close(fig)
-        if len(png_bytes) <= max_bytes:
-            return _encode_png_bytes_to_data_uri(png_bytes)
-
-        # Attempt palette quantize on this tiny version
-        pq = _try_palette_quantize(png_bytes)
-        if len(pq) <= max_bytes:
-            return _encode_png_bytes_to_data_uri(pq)
-    except Exception:
-        pass
-
-    # At this point: cannot make it <= max_bytes, return best-effort (but still a data URI)
-    if last_png:
-        return _encode_png_bytes_to_data_uri(last_png)
-
-    raise RuntimeError("Failed to generate plot image")
+    return data_uri
