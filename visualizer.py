@@ -1,9 +1,5 @@
-# visualizer.py
 import io
 import base64
-import os
-from typing import Optional
-
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -13,15 +9,10 @@ sns.set_theme(style="whitegrid")
 sns.set_context("notebook")
 
 
-def _encode_png_bytes_to_data_uri(png_bytes: bytes) -> str:
-    return "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii")
-
-
 def _try_palette_quantize(png_bytes: bytes) -> bytes:
     """Try to convert PNG to paletted (P) mode to save size."""
     try:
         img = Image.open(io.BytesIO(png_bytes))
-        # Convert to adaptive palette - this often reduces PNG size significantly
         pal = img.convert("P", palette=Image.ADAPTIVE)
         out = io.BytesIO()
         pal.save(out, format="PNG", optimize=True)
@@ -29,19 +20,6 @@ def _try_palette_quantize(png_bytes: bytes) -> bytes:
     except Exception:
         return png_bytes
 
-
-def _render_png_bytes(fig, dpi: int = 80) -> bytes:
-    buf = io.BytesIO()
-    fig.tight_layout()
-    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight", optimize=True)
-    return buf.getvalue()
-
-
-import io
-import base64
-import matplotlib.pyplot as plt
-import seaborn as sns
-import pandas as pd
 
 def plot_regression(df: pd.DataFrame, x_col: str, y_col: str, title: str = "") -> str:
     """
@@ -77,13 +55,15 @@ def plot_regression(df: pd.DataFrame, x_col: str, y_col: str, title: str = "") -
     plt.savefig(buf, format="png", dpi=100, bbox_inches="tight")
     plt.close()
 
+    # Quantize image to shrink size
+    png_bytes = _try_palette_quantize(buf.getvalue())
+
     # Convert to base64
-    buf.seek(0)
-    img_base64 = base64.b64encode(buf.read()).decode("utf-8")
+    img_base64 = base64.b64encode(png_bytes).decode("utf-8")
     data_uri = f"data:image/png;base64,{img_base64}"
 
     # Ensure < 100 KB
-    if len(base64.b64decode(img_base64)) >= 100_000:
+    if len(png_bytes) >= 100_000:
         raise ValueError("Generated image exceeds 100 KB limit.")
 
     return data_uri

@@ -44,7 +44,11 @@ def answer_wikipedia_questions(df: pd.DataFrame, plot_function: Callable[..., st
                 q2 = str(q2_df.iloc[0]['title'])
         else:
             # fallback: earliest by index
-            q2_df = df[df.get('worldwide_gross', 0) > 1_500_000_000]
+            q2_df = (
+                df[df['worldwide_gross'] > 1_500_000_000]
+                if 'worldwide_gross' in df.columns
+                else pd.DataFrame()
+            )
             if not q2_df.empty and 'title' in q2_df.columns:
                 q2 = str(q2_df.iloc[0]['title'])
     except Exception:

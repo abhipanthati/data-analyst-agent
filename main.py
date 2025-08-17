@@ -3,6 +3,8 @@ import json
 import tempfile
 import subprocess
 import logging
+import base64
+import re
 from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -68,18 +70,68 @@ def run_python_code(code: str, timeout: int = 120) -> str:
         tmp.write(code)
         tmp_path = tmp.name
 
+    docker_image = "python:3.11-slim"
+    container_name = f"sandbox_{os.path.basename(tmp_path)}"
     try:
-        proc = subprocess.run(["python", tmp_path], capture_output=True, timeout=timeout)
+        # Check if Docker is available
+        check = subprocess.run(["docker", "info"], capture_output=True, timeout=10)
+        if check.returncode != 0:
+            return json.dumps({"error": "Docker is not available or not running. Please ensure Docker is installed and running."})
+    except FileNotFoundError:
+        return json.dumps({"error": "Docker is not installed on this system."})
+    except Exception as e:
+        return json.dumps({"error": f"Docker check failed: {e}"})
+
+    try:
+        subprocess.run(["docker", "pull", docker_image], capture_output=True, timeout=60)
+        cmd = [
+            "docker", "run", "--rm",
+            "--name", container_name,
+            "--network", "none",
+            "--cpus=1", "--memory=512m",
+            "-v", f"{tmp_path}:/tmp/code.py:ro",
+            docker_image,
+            "timeout", str(timeout), "python", "/tmp/code.py"
+        ]
+        proc = subprocess.run(cmd, capture_output=True, timeout=timeout+10)
         out = proc.stdout.decode("utf-8", errors="replace")
         err = proc.stderr.decode("utf-8", errors="replace")
         return out + "\n" + err
     except subprocess.TimeoutExpired:
-        return "Execution timed out."
+        return json.dumps({"error": "Sandbox execution timed out."})
+    except Exception as e:
+        return json.dumps({"error": f"Sandbox error: {e}"})
     finally:
         try:
             os.remove(tmp_path)
         except Exception:
             pass
+
+# --- PNG base64 size enforcement ---
+def check_png_base64_size(obj, max_bytes=100_000):
+    """Recursively check for PNG base64 data URIs in obj. Return error if any > max_bytes."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            err = check_png_base64_size(v, max_bytes)
+            if err:
+                return err
+    elif isinstance(obj, list):
+        for v in obj:
+            err = check_png_base64_size(v, max_bytes)
+            if err:
+                return err
+    elif isinstance(obj, str):
+        # Look for PNG data URI
+        match = re.match(r"^data:image/png;base64,([A-Za-z0-9+/=]+)$", obj)
+        if match:
+            b64 = match.group(1)
+            try:
+                raw = base64.b64decode(b64)
+                if len(raw) > max_bytes:
+                    return f"PNG image exceeds {max_bytes//1000}kB limit ({len(raw)} bytes)."
+            except Exception:
+                return "Invalid base64 PNG image."
+    return None
 
 
 def split_questions(text: str) -> List[str]:
@@ -165,13 +217,21 @@ async def analyze(files: List[UploadFile] = File(...)):
             if "df" in info:
                 parsed_files[upload.filename] = info["df"]
 
-    # Assume the first file is the question text
+
     if not file_paths:
         return JSONResponse(content={"error": "No files uploaded."}, status_code=400)
 
-    with open(file_paths[0], "rb") as f:
+    # Find questions.txt by name (case-insensitive), fallback to first file
+    q_idx = None
+    for i, name in enumerate(file_names):
+        if name.lower() == "questions.txt":
+            q_idx = i
+            break
+    if q_idx is None:
+        q_idx = 0
+    with open(file_paths[q_idx], "rb") as f:
         question_text = f.read().decode(errors="replace")
-    logger.info("Received question text (len=%d)", len(question_text))
+    logger.info("Received question text (len=%d) from %s", len(question_text), file_names[q_idx])
 
     # Build a resource list for the LLM
     resource_list = []
@@ -288,7 +348,11 @@ Otherwise, synthesize the answers into the exact JSON format the question reques
             except Exception:
                 parsed = {"error": "Failed to parse JSON from LLM or execution output.", "raw": final_answer}
 
-        if isinstance(parsed, list):
+        # Enforce PNG base64 image size limit (100kB)
+        png_size_error = check_png_base64_size(parsed)
+        if png_size_error:
+            final_results.append({"error": png_size_error})
+        elif isinstance(parsed, list):
             final_results.extend(parsed)
         elif isinstance(parsed, dict):
             final_results.append(parsed)
@@ -309,3 +373,5 @@ Otherwise, synthesize the answers into the exact JSON format the question reques
         return JSONResponse(content=merged)
 
     return JSONResponse(content=final_results)
+
+    # (Removed duplicate endpoint and legacy code. The main endpoint above already implements batching and LLM orchestration as required.)
